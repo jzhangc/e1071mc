@@ -1,7 +1,7 @@
 ### R code from vignette source 'svmdoc.Rnw'
 
 ###################################################
-### code chunk number 1: svmdoc.Rnw:140-150
+### code chunk number 1: svmdoc.Rnw:146-156
 ###################################################
 library(e1071)
 library(randomForest)
@@ -16,7 +16,7 @@ trainset  <- Glass[-testindex,]
 
 
 ###################################################
-### code chunk number 2: svmdoc.Rnw:155-158
+### code chunk number 2: svmdoc.Rnw:161-164
 ###################################################
 ## svm
 svm.model <- svm(Type ~ ., data = trainset, cost = 100, gamma = 1)
@@ -24,7 +24,7 @@ svm.pred  <- predict(svm.model, testset[,-10])
 
 
 ###################################################
-### code chunk number 3: svmdoc.Rnw:163-166
+### code chunk number 3: svmdoc.Rnw:169-172
 ###################################################
 ## randomForest
 rf.model <- randomForest(Type ~ ., data = trainset)
@@ -32,7 +32,7 @@ rf.pred  <- predict(rf.model, testset[,-10])
 
 
 ###################################################
-### code chunk number 4: svmdoc.Rnw:169-174
+### code chunk number 4: svmdoc.Rnw:175-180
 ###################################################
 ## compute svm confusion matrix
 table(pred = svm.pred, true = testset[,10])
@@ -42,7 +42,7 @@ table(pred = rf.pred, true = testset[,10])
 
 
 ###################################################
-### code chunk number 5: svmdoc.Rnw:179-215
+### code chunk number 5: svmdoc.Rnw:185-221
 ###################################################
 library(xtable)
 rf.acc <- c()
@@ -83,7 +83,7 @@ xtable(tab, label = "tab:class", caption = "Performance of \\texttt{svm()} and\
 
 
 ###################################################
-### code chunk number 6: svmdoc.Rnw:228-248
+### code chunk number 6: svmdoc.Rnw:234-254
 ###################################################
 library(e1071)
 library(randomForest)
@@ -108,7 +108,7 @@ sqrt(crossprod(rf.pred - testset[,3]) / N)
 
 
 ###################################################
-### code chunk number 7: svmdoc.Rnw:251-275
+### code chunk number 7: svmdoc.Rnw:257-281
 ###################################################
 rf.res <- c()
 sv.res <- c()
