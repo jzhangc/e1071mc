@@ -5,7 +5,10 @@ results
 .vscode
 log
 AGENTS.md
+<<<<<<< HEAD
 prompts.md
+=======
+>>>>>>> e59e4ab279f2313b33f279a8db049faa6ccc9137
 
 # Distribution / packaging
 .Python
