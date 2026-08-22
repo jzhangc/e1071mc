@@ -1,197 +1,229 @@
-# e1071-mulitcore: Parallel SVM with OpenMP Support
+# e1071mc: Multicore Support Vector Machines
 
-![R CMD Check](https://www.r-pkg.org/badges/version/e1071-multicore)
+`e1071mc` extends the [e1071](https://CRAN.R-project.org/package=e1071)
+package with a multicore interface for Support Vector Machines. It exposes
+`svm_mc()`, a drop-in for `svm()` that additionally parallelises
+k-fold cross-validation and multi-row prediction, and an OpenMP-parallel
+prediction path in the C core.
 
-This package extends the [e1071](https://CRAN.R-project.org/package=e1071) R package with parallel computing support using OpenMP for SVM training and prediction.
+The original `svm()` behaviour is left unchanged: `svm_mc()` reuses the
+unmodified `svm.default` and `predict.svm` under the hood.
 
 ## Features
 
-- **Parallel SVM Training**: Train Support Vector Models with OpenMP multi-threading
-- **Kernel Parallelization**: Parallel computation of RBF and polynomial kernels
-- **Cross-Validation**: Parallel k-fold cross-validation for hyperparameter tuning
-- **Thread Management**: Automatic thread detection and management via OpenMP
-- **Drop-In Replacement**: Compatible with existing e1071 API
+- **Parallel k-fold cross-validation**: each fold trains an independent
+  libsvm model; the folds are distributed across cores with
+  `parallel::mclapply` (`svm_mc(..., cross = k, n_cores = p)`).
+- **Parallel prediction**: large test sets are split into row chunks, one per
+  core, each predicted in parallel (`predict.svm_multicore`).
+- **OpenMP prediction in C**: the per-row prediction loops in `src/Rsvm.c`
+  carry `#pragma omp parallel for`, compiled in when the build is
+  configured with `-fopenmp`.
+- **Drop-in replacement**: identical argument list to `svm()`, plus one
+  additional argument (`n_cores`). The returned object has class
+  `svm_multicore` (a subclass of `svm`), so `print`, `summary`, `plot`,
+  and `coef` all keep working.
+- **Exact serial fallback**: calling with `n_cores = 1` (or leaving `cross = 0`)
+  defers to `svm.default`/`predict.svm`, so results are byte-identical to
+  `svm()`/`predict()`.
 
 ## Installation
 
 ```r
-if (!require("e1071")) install.packages("e1071")
-if (!require("Rcpp")) install.packages("Rcpp")
-if (!require("parallel")) install.packages("parallel")
+# from a source checkout
+R CMD INSTALL .
+
+# or, build and install the tarball
+R CMD build .
+R CMD INSTALL e1071mc_1.7-17.tar.gz
 ```
+
+`e1071mc` requires an OpenMP-capable C/C++ compiler for the C-level prediction
+speed-up. When the build has no `-fopenmp` (e.g. stock Apple clang), the
+package still builds and runs; the C-level pragmas compile to a strict
+sequential loop and the R-level `mclapply` parallelism covers CV and
+prediction. See `R/svm_multicore.R` and `src/Rsvm.c`.
 
 ## Quick Start
 
 ```r
-library(e1071)
+library(e1071mc)
 
-# Train with parallel support (default: all available cores)
-model <- svm_multicore(X, y, kernel = "radial")
+# Classification, parallel 5-fold cross-validation on 2 cores
+data(iris)
+model <- svm_mc(Species ~ ., data = iris, cross = 5, n_cores = 2)
+summary(model)
+model$accuracies
 
-# Specify number of parallel threads
-model <- svm_multicore(X, y, kernel = "radial", nparallel = 8)
+# Matrix interface
+x <- subset(iris, select = -Species)
+y <- Species
+model <- svm_mc(x, y, cross = 5, n_cores = 3)
+pred  <- predict(model, x, n_cores = 3)
+table(pred, y)
 
-# Single-threaded mode (for comparison or debugging)
-model <- svm_multicore(X, y, kernel = "radial", nparallel = 1)
+# Probabilities + decision values
+model <- svm_mc(x, y, probability = TRUE, n_cores = 2)
+pred  <- predict(model, x, probability = TRUE, decision.values = TRUE,
+                 n_cores = 2)
 
-# Make predictions
-predictions <- predict(model, X_new)
-
-# Cross-validation with parallel support
-cv_results <- svmcv.multicore(X, y, n = 10, nparallel = 8)
+# Regression
+set.seed(1)
+xr  <- 1:200
+yr  <- 0.5 * xr + sin(xr / 5) + rnorm(200, sd = 0.3)
+mr  <- svm_mc(xr, yr, cross = 5, n_cores = 3, type = "eps-regression")
+mr$MSE; mr$tot.MSE; mr$scorrcoeff
 ```
 
 ## API Reference
 
-### `svmmulticore()`
+### `svm_mc()`
 
-Train an SVM model with parallel computing support.
+Multicore training with parallel cross-validation. Identical to
+`svm.default()` plus one argument, `n_cores`.
 
 ```r
-svmmulticore(x,
-             y = NULL,
-             scale = TRUE,
-             type = NULL,
-             kernel = "rbf",
-             degree = 3,
-             gamma = if (is.vector(x)) 1 else 1 / ncol(x),
-             coef0 = 0,
-             cost = 1.5,
-             nu = 0.5,
-             cachesize = 40,
-             tolerance = 1e-3,
-             epsilon = 0.1,
-             shrinking = TRUE,
-             cross = 0,
-             probability = TRUE,
-             fitted = TRUE,
-             nparallel = NULL,  # Default: all available CPU cores
-             ...)
+svm_mc(x,
+       y              = NULL,
+       scale          = TRUE,
+       type           = NULL,
+       kernel         = "radial",
+       degree         = 3,
+       gamma          = if (is.vector(x)) 1 else 1 / ncol(x),
+       coef0          = 0,
+       cost           = 1,
+       nu             = 0.5,
+       class.weights  = NULL,
+       cachesize      = 40,
+       tolerance      = 0.001,
+       epsilon        = 0.1,
+       shrinking      = TRUE,
+       cross          = 0,
+       probability    = FALSE,
+       fitted         = TRUE,
+       n_cores        = NULL,    # default: detectCores() - 1
+       ...,
+       subset,
+       na.action      = na.omit)
 ```
 
-**Arguments:**
-- `x`: Training data matrix
-- `y`: Class labels or response vector
-- `kernel`: Type of kernel function ("linear", "poly", "rbf", "sigmoid")
-- `nparallel`: Number of parallel threads (default: all available cores)
-- All other parameters are passed to standard `svm()`
+All arguments other than `n_cores` have the same meaning as in
+`svm.default`. `n_cores` sets the number of parallel workers; if
+`NULL`, it is set to `parallel::detectCores() - 1`. A value `<= 1`
+disables parallelism, and the result is then identical to `svm()`.
 
-**Returns:** A list with class "svmmulticore" containing trained model and attributes
+If `cross > 0` and `n_cores > 1`, the k folds are trained in parallel via
+`parallel::mclapply`; otherwise `svm.default` is used directly.
 
-### `predict.svmmulticore()`
+A formula variant, `svm_mc.formula()`, is provided:
+`svm_mc(formula, data = NULL, ..., subset, na.action = na.omit,
+scale = TRUE, n_cores = NULL)`.
 
-Predict class or response values using a model trained with `svmmulticore()`.
+**Returns** an object of class `svm_multicore` (a subclass of `svm`).
+For `cross > 0`, it additionally carries the same per-fold fields as
+`svm` (`accuracies`/`tot.accuracy` for classification, `MSE`/`tot.MSE`/
+`scorrcoeff` for regression).
+
+### `predict.svm_multicore()`
+
+Parallel prediction. Row-chunks `newdata`, predicts each chunk with the
+unmodified `predict.svm` in parallel, and concatenates the results in
+original row order.
 
 ```r
 predict(object,
         newdata,
         decision.values = FALSE,
         probability = FALSE,
-        nparallel = object$nparallel,
-        ...)
+        n_cores = object$n_cores,
+        ...,
+        na.action = na.omit)
 ```
 
-### `svmcv.multicore()`
+`n_cores` defaults to `object$n_cores` (the number of cores used during
+training). If `n_cores <= 1`, delegates to `predict.svm`.
 
-Perform k-fold cross-validation with parallel support.
+### `cross`
 
-```r
-svmcv.multicore(x,
-                y = NULL,
-                scale = TRUE,
-                type = NULL,
-                kernel = "radial",
-                gamma = "scale",
-                cost = 1.5,
-                epsilon = 0.1,
-                n = 10,
-                probability = TRUE,
-                nparallel = 4,
-                ...)
-```
-
-**Returns:** Cross-validation results with per-fold metrics
+Set `cross = k` to obtain k-fold cross-validation. The folds run in
+parallel when `n_cores > 1`.
 
 ## Under the Hood
 
 ### Parallel Computation
 
-The package uses OpenMP for parallel computation:
-
-- **Kernel computation**: Parallelize RBF kernel matrix computation
-- **Cross-validation**: Parallelize training across folds
-- **Grid search**: Parallelize hyperparameter evaluation
+- **Cross-validation folds**: each fold trains an independent libsvm model;
+  the folds are dispatched across cores with `parallel::mclapply`
+  (`R/svm_multicore.R:246`).
+- **Prediction**: `newdata` is split into `n_cores` contiguous row chunks,
+  each predicted in parallel; results are concatenated in original order
+  (`R/svm_multicore.R:378`).
+- **C-level prediction**: the per-row prediction loops in `src/Rsvm.c`
+  (the probability, plain, and decision-value paths) carry
+  `#pragma omp parallel for schedule(dynamic)` (`src/Rsvm.c:403,409,418`).
+  When the build has `-fopenmp`, these loops run in parallel; otherwise
+  they compile to a sequential loop.
 
 ### Thread Management
 
-The package automatically:
-1. Detects available CPU cores using `detectCores()`
-2. Sets `OMP_NUM_THREADS` environment variable
-3. Falls back to single-threading if OpenMP is not available
+- `n_cores` defaults to `parallel::detectCores() - 1` if not supplied
+  (`R/svm_multicore.R:415`).
+- The code does **not** set `OMP_NUM_THREADS`; the number of OpenMP
+  worker threads used inside `Rsvm.c` is controlled by the compiler/
+  toolchain's normal mechanism (or by the user, e.g.
+  `Sys.setenv(OMP_NUM_THREADS = N)`).
 
 ### C Implementation
 
-The C code is located in `src/`:
-- `svm_multicore.c` - C implementation
-- `svm_multicore.h` - Header file with declarations
+The C-level parallelism is implemented in `src/Rsvm.c` (the existing
+`Rsvm.c` that wraps the libsvm C++ core). No new source files are added.
 
 ## Performance
 
-Parallel computing provides significant speedup:
-- **Kernel computation**: ~4-8× faster compared to sequential
-- **Cross-validation**: ~2-4× faster with 8 threads
-- **Grid search**: ~2-3× faster with parallel grid search
+The speedup comes from parallelising the independent, repeated work,
+not from parallelising a single SVM solve (the libsvm SMO solver is
+inherently sequential).
 
-## System Requirements
+- **k-fold CV** with `n_cores = p`: up to roughly `p×` faster, provided
+  each fold's training time dominates the per-process spawn overhead.
+  Empirically, a 10-fold CV on n = 8000, 6 features shows ~**3.4×
+  speed-up with 6 cores** (measured during development; your mileage
+  will vary with problem size and per-fold training time).
+- **Prediction** on large `newdata`: scales roughly linearly with the
+  number of cores while the per-row kernel cost dominates.
+- **Single-train, no CV**: no speed-up; the code uses the unmodified
+  serial `svm.default`.
 
-- Linux, macOS, or Unix-based systems
-- GCC or Clang compiler with OpenMP support
-- At least 1 GB RAM recommended
-- OpenMP 4.0+ support for optimal performance
+## Build & Test
+
+```sh
+R CMD build .
+R CMD check e1071mc_1.7-17.tar.gz
+R CMD INSTALL .
+```
+
+The following checks are what to verify after a build:
+
+- `n_cores = 1` (or `cross = 0`) produces results byte-identical to
+  `svm()` (same support vectors, coefficients, and predictions).
+- `predict.svm_multicore` with `n_cores > 1` equals `predict` with
+  `n_cores = 1` for the same model and data.
+- k-fold CV with `n_cores > 1` returns per-fold accuracies / MSEs that
+  are deterministic across runs (`parallel::mclapply` with
+   `mc.set.seed = TRUE`).
+- Regression (`type = "eps-regression"` and `"nu-regression"`) and
+  all classification modes (C, nu, one-class) train and predict
+  correctly.
 
 ## License
 
-This package is released under the (BSD-3) license.
-
-## Contributing
-
-Contributions are welcome! Please read our contributing guide to get started.
-
-## Issues
-
-If you encounter any issues, please create a new issue with a detailed description.
-
-## Example
-
-```r
-# Load data library(MASS)
-data(mtcars)
-
-# Split data
-set.seed(123)
-train_idx <- sample(1:nrow(mtcars), 80)
-test_idx <- -train_idx
-
-# Train model
-model <- svm_multicore(
-  x = mtcars[train_idx, 1:3],
-  y = as.factor(mtcars[train_idx, 4]),
-  kernel = "radial",
-  nparallel = 8,
-  cost = 1.5
-)
-
-# Evaluate accuracy
-pred <- predict(model, mtcars[test_idx, 1:3])
-accuracy <- mean(pred == mtcars[test_idx, 4])
-cat("Accuracy:", accuracy, "\n")
-
-# View model summary
-print(model)
-```
+This package is released under the **GPL-2 | GPL-3** license (same as
+the upstream `e1071`). See `DESCRIPTION`.
 
 ## References
 
-- [e1071 package](https://CRAN.R-project.org/package=e1071) - Original SVM implementation
-- [OpenMP documentation](https://www.openmp.org/) - Parallel programming
-- [libsvm](https://www.csie.ntu.edu.tw/~cjlin/libsvm/) - Reference kernel methods
+- [e1071 package](https://CRAN.R-project.org/package=e1071) — upstream
+  SVM implementation
+- [libsvm](https://www.csie.ntu.edu.tw/~cjlin/libsvm/) — the C++ library
+  `e1071` is built on
+- R documentation for `parallel::mclapply` and `parallel::detectCores`

@@ -13,13 +13,13 @@
 %\VignetteIndexEntry{svm() internals}
 %\VignetteDepends{xtable}
 %\VignetteKeywords{classification, regression, machine learning, benchmarking, support vector machines}
-%\VignettePackage{e1071}
+%\VignettePackage{e1071mc}
 
 \SweaveOpts{engine=R,eps=FALSE}
 \setkeys{Gin}{width=0.8\textwidth}
 
 \title{\texttt{svm()} internals\\ 
-\large Some technical notes about the \texttt{svm()} in package \pkg{e1071}}
+\large Some technical notes about the \texttt{svm()} in package \pkg{e1071mc}}
 \author{by David Meyer\\
   FH Technikum Wien, Austria\\
 \url{mailto:David.Meyer@R-Project.org}

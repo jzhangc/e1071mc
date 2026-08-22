@@ -1,8 +1,8 @@
-Package: e1071
+Package: e1071mc
 Version: 1.7-17
 Title: Misc Functions of the Department of Statistics, Probability
         Theory Group (Formerly: E1071), TU Wien
-Imports: graphics, grDevices, class, stats, methods, utils, proxy
+Imports: graphics, grDevices, class, stats, methods, utils, proxy, parallel
 Suggests: cluster, mlbench, nnet, randomForest, rpart, SparseM, xtable,
         Matrix, MASS, slam
 Authors@R: c(person(given = "David", family = "Meyer", role = c("aut", "cre"),

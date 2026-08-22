@@ -398,18 +398,28 @@ void svmpredict  (int    *decisionvalues,
 
     /* call svm-predict-function for each x-row, possibly using probability 
        estimator, if requested */
-    if (*probability && svm_check_probability_model(&m)) {
-      for (i = 0; i < *xr; i++)
-	ret[i] = svm_predict_probability(&m, train[i], prob + i * *nclasses);
-    } else {
-      for (i = 0; i < *xr; i++)
-	ret[i] = svm_predict(&m, train[i]);
-    }
+     if (*probability && svm_check_probability_model(&m)) {
+#if defined(_OPENMP)
+       #pragma omp parallel for schedule(dynamic)
+#endif
+       for (i = 0; i < *xr; i++)
+ 	ret[i] = svm_predict_probability(&m, train[i], prob + i * *nclasses);
+      } else {
+#if defined(_OPENMP)
+       #pragma omp parallel for schedule(dynamic)
+#endif
+       for (i = 0; i < *xr; i++)
+ 	ret[i] = svm_predict(&m, train[i]);
+      }
 
-    /* optionally, compute decision values */
-    if (*decisionvalues)
+      /* optionally, compute decision values */
+    if (*decisionvalues) {
+#if defined(_OPENMP)
+      #pragma omp parallel for schedule(dynamic)
+#endif
       for (i = 0; i < *xr; i++)
-	svm_predict_values(&m, train[i], dec + i * *nclasses * (*nclasses - 1) / 2);
+ 	svm_predict_values(&m, train[i], dec + i * *nclasses * (*nclasses - 1) / 2);
+    }
 
     /* clean up memory */
     for (i = 0; i < *xr; i++)

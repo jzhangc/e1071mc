@@ -3,7 +3,7 @@
 ###################################################
 ### code chunk number 1: svmdoc.Rnw:146-156
 ###################################################
-library(e1071)
+library(e1071mc)
 library(randomForest)
 data(Glass, package="mlbench")
 
@@ -85,7 +85,7 @@ xtable(tab, label = "tab:class", caption = "Performance of \\texttt{svm()} and\
 ###################################################
 ### code chunk number 6: svmdoc.Rnw:234-254
 ###################################################
-library(e1071)
+library(e1071mc)
 library(randomForest)
 data(Ozone, package="mlbench")
 
