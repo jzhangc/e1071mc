@@ -191,8 +191,10 @@ inherently sequential).
   will vary with problem size and per-fold training time).
 - **Prediction** on large `newdata`: scales roughly linearly with the
   number of cores while the per-row kernel cost dominates.
-- **Single-train, no CV**: no speed-up; the code uses the unmodified
-  serial `svm.default`.
+- **Single-train, no CV**: no speed-up on the training solve (the libsvm
+  SMO solve is serial); the code calls the unmodified `svm.default`, whose
+  fitted-value prediction still benefits from the OpenMP C loop when the
+  build has `-fopenmp`.
 
 ## Build & Test
 
@@ -207,7 +209,7 @@ The following checks are what to verify after a build:
 - `n_cores = 1` (or `cross = 0`) produces results byte-identical to
   `svm()` (same support vectors, coefficients, and predictions).
 - `predict.svm_multicore` with `n_cores > 1` equals `predict` with
-  `n_cores = 1` for the same model and data.
+   `n_cores <= 1` for the same model and data.
 - k-fold CV with `n_cores > 1` returns per-fold accuracies / MSEs that
   are deterministic across runs (`parallel::mclapply` with
    `mc.set.seed = TRUE`).
