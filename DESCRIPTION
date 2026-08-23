@@ -15,7 +15,9 @@ Authors@R: c(person(given = "David", family = "Meyer", role = c("aut", "cre"),
              person(given = "Andreas", family = "Weingessel", role = "aut"),
              person(given = "Friedrich", family = "Leisch", role = "aut"),
              person(given = "Chih-Chung", family = "Chang", role = c("ctb","cph"), comment = "libsvm C++-code"),
-             person(given = "Chih-Chen", family = "Lin", role = c("ctb","cph"), comment = "libsvm C++-code"))
+             person(given = "Chih-Chen", family = "Lin", role = c("ctb","cph"), comment = "libsvm C++-code"),
+             person(given = "Jing", family = "Zhang", role = c("aut"),
+                    email = "jzhangcad@gmail.com", comment = "e1071mc fork: parallel compute support"))
 Description: Functions for latent class analysis, short time Fourier
 	     transform, fuzzy clustering, support vector machines,
 	     shortest path computation, bagged clustering, naive Bayes
