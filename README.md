@@ -296,6 +296,19 @@ The following checks are what to verify after a build:
   all classification modes (C, nu, one-class) train and predict
   correctly.
 
+## Version Log
+
+`e1071mc` is a fork of the CRAN `e1071` package (upstream base
+**1.7-17**, 2025-12-18) that adds multicore / OpenMP parallelism.
+Dates below are the update (release) dates of each version.
+
+| Version | Date | Notes |
+| --- | --- | --- |
+| 1.7-17-1-20260823 | 2026-08-23 | Current version; `Version` and `DESCRIPTION` metadata updated. |
+| 1.7-17-1-20260822v3 | 2026-08-22 | README rewritten to reflect C-level OpenMP prediction (no R row-chunking); C indentation normalised and comments added in the `svmpredict` loops and the `svm.cpp` `G` / `G_bar` loops; tarball filename corrected; `man/svm_mc.Rd` `\emdash` macro fixed. |
+| 1.7-17-1-20260822 | 2026-08-22 | Initial multicore implementation: `svm_mc()` (parallel k-fold CV via `parallel::mclapply`) and `predict.svm_multicore()` (C-level OpenMP). Added `#pragma omp` parallelism in `src/Rsvm.c` (`svmpredict` per-row loops) and `src/svm.cpp` (SMO per-iteration gradient / `G_bar` updates and RBF `x_square` pre-compute). |
+| 1.7-17 | 2025-12-18 | Upstream `e1071` base (this fork's starting point). Full upstream history in `inst/NEWS.Rd`. |
+
 ## License
 
 This package is released under the **GPL-2 | GPL-3** license (same as
