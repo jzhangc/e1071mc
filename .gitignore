@@ -6,6 +6,7 @@ results
 log
 AGENTS.md
 prompts.md
+*session_*
 
 # Object files
 *.o
