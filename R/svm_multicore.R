@@ -75,9 +75,14 @@ function (x,
 {
     n_cores <- .svm_mc_resolve_cores(n_cores)
 
-      # Resolve model type / kernel the same way svm.default does, purely to
-     # decide how to aggregate cross-validation results.  The actual fit and
-     # CV use the original svm.default so behaviour matches the base package.
+        # Resolve model type / kernel the same way svm.default does, purely to
+      # decide how to aggregate cross-validation results.  The actual fit and
+      # CV use the original svm.default so behaviour matches the base package.
+
+        # C-level OpenMP thread count for a single SMO train.  svm.default
+      # (and predict.svm) always run single-threaded, because e1071mc_threads
+      # defaults to 1: only the wrapper below temporarily raises it, then
+      # restores 1, so the original suite is bit-identical to upstream.
     if (is.null(type)) type.res <-
         if (is.null(y)) "one-classification"
         else if (is.factor(y)) "C-classification"
@@ -89,37 +94,48 @@ function (x,
                                    "one-classification",
                                    "eps-regression",
                                    "nu-regression"), 99) - 1
-    if (type.i > 10) stop("wrong type specification!")
+     if (type.i > 10) stop("wrong type specification!")
 
-       # Fast path: no cross-validation OR only one core.
-      # Deferring to the unmodified svm.default gives an exact, drop-in result.
+          # subset / sparse / extra args have no default in svm.default; forward them
+         # only when actually supplied.  missing() is evaluated here, in
+         # svm_mc.default's own frame, and the captured lists are spread into each
+         # training call via do.call().
+    subset.args <- if (!missing(subset)) list(subset = subset) else list()
+    extra.args  <- list(...)
+
+          # Fast path: no cross-validation OR only one core.
+         # Deferring to the unmodified svm.default gives an exact, drop-in result.
     if (cross <= 0L || n_cores <= 1L) {
-        m <- svm.default(x = x, y = y, scale = scale, type = type,
-                         kernel = kernel, degree = degree, gamma = gamma,
-                         coef0 = coef0, cost = cost, nu = nu,
-                         class.weights = class.weights,
-                         cachesize = cachesize, tolerance = tolerance,
-                         epsilon = epsilon, shrinking = shrinking,
-                         cross = cross, probability = probability,
-                         fitted = fitted, subset = subset,
-                         na.action = na.action, ...)
+        m <- .svm_mc_run_train(function() do.call(svm.default, c(list(
+             x = x, y = y, scale = scale, type = type,
+             kernel = kernel, degree = degree, gamma = gamma,
+             coef0 = coef0, cost = cost, nu = nu,
+             class.weights = class.weights,
+             cachesize = cachesize, tolerance = tolerance,
+             epsilon = epsilon, shrinking = shrinking,
+             cross = cross, probability = probability,
+             fitted = fitted,
+             na.action = na.action),
+             subset.args, extra.args)), n_cores)
         m$n_cores <- as.integer(n_cores)
         class(m) <- c("svm_multicore", class(m))
         return (m)
-    }
+       }
 
-      # Parallel path: cross > 0 and n_cores > 1.
-     # 1. Train the final full-data model with the unmodified svm.default,
-        # cross forced to 0 (CV handled below, in parallel).
-    final.model <- svm.default(x = x, y = y, scale = scale, type = type,
-                               kernel = kernel, degree = degree, gamma = gamma,
-                               coef0 = coef0, cost = cost, nu = nu,
-                               class.weights = class.weights,
-                               cachesize = cachesize, tolerance = tolerance,
-                               epsilon = epsilon, shrinking = shrinking,
-                               cross = 0L, probability = probability,
-                               fitted = FALSE, subset = subset,
-                               na.action = na.action, ...)
+          # Parallel path: cross > 0 and n_cores > 1.
+        # 1. Train the final full-data model with the unmodified svm.default,
+           # cross forced to 0 (CV handled below, in parallel).
+    final.model <- .svm_mc_run_train(function() do.call(svm.default, c(list(
+        x = x, y = y, scale = scale, type = type,
+        kernel = kernel, degree = degree, gamma = gamma,
+        coef0 = coef0, cost = cost, nu = nu,
+        class.weights = class.weights,
+        cachesize = cachesize, tolerance = tolerance,
+        epsilon = epsilon, shrinking = shrinking,
+        cross = 0L, probability = probability,
+        fitted = FALSE,
+        na.action = na.action),
+        subset.args, extra.args)), n_cores)
 
     final.model$n_cores <- as.integer(n_cores)
 
@@ -337,7 +353,7 @@ function (object, newdata,
           decision.values = FALSE,
           probability = FALSE,
           n_cores = object$n_cores,
-             ...,
+            ...,
           na.action = na.omit)
 {
     if (missing(newdata))
@@ -345,67 +361,24 @@ function (object, newdata,
 
     n_cores <- .svm_mc_resolve_cores(n_cores)
 
-       # Single core: identical path to the original predict.svm.
+        # Single core: identical path to the original predict.svm (serial C loop).
     if (n_cores <= 1L)
         return (predict.svm(object, newdata,
                             decision.values = decision.values,
                             probability = probability,
                             na.action = na.action))
 
-       # Coerce atomic/vector newdata to a matrix, mirroring predict.svm
-      # (R/svm.R:408), so row-chunking works for vector predictors too.
-    if ((is.vector(newdata) && is.atomic(newdata)))
-        newdata <- t(t(newdata))
-
-       # Split newdata into contiguous row chunks, one per core, and predict
-      # each chunk with the unmodified predict.svm in parallel.  Results are then
-      # concatenated in original row order.
-    n <- nrow(newdata)
-    chunk.sizes <- integer(n_cores) + (n %/% n_cores)
-    rem <- n %% n_cores
-    chunk.sizes[seq_len(rem)] <- chunk.sizes[seq_len(rem)] + 1L
-    boundaries <- cumsum(chunk.sizes)
-    chunks <- vector("list", n_cores)
-    for (i in seq_len(n_cores)) {
-        from <- if (i == 1L) 1L else boundaries[i - 1L] + 1L
-        to   <- boundaries[i]
-        chunks[[i]] <- if (is.matrix(newdata) || is.data.frame(newdata))
-            newdata[from:to, , drop = FALSE]
-        else
-            newdata[from:to]
-      }
-
-    out <- mclapply(chunks, function (cd) {
-        predict.svm(object, cd,
-                    decision.values = decision.values,
-                    probability = probability,
-                    na.action = na.action)
-       }, mc.cores = n_cores)
-
-    combined <- do.call(c, out)
-
-    # do.call(c, .) on named vectors mangles the names (dedup with .1/.2
-    # suffixes); restore the correct row labels, mirroring predict.svm which
-    # names the result with the rownames of newdata (or 1:nrow if none).
-    names(combined) <- if (!is.null(rownames(newdata)))
-        rownames(newdata)
-    else
-        1:nrow(newdata)
-
-    if (decision.values) {
-        dv <- lapply(out, function (o) attr(o, "decision.values"))
-        if (!is.null(dv[[1L]]))
-            attr(combined, "decision.values") <-
-                if (is.matrix(dv[[1L]])) do.call(rbind, dv)
-                else do.call(c, dv)
-      }
-    if (probability) {
-        pb <- lapply(out, function (o) attr(o, "probabilities"))
-        if (length(pb) && !is.null(pb[[1L]]))
-            attr(combined, "probabilities") <- do.call(rbind, pb)
-      }
-
-    return (combined)
+        # Multi-core: C-level OpenMP.  Raise the C thread count and call
+       # predict.svm exactly once; the per-row loop in src/Rsvm.c (svmpredict)
+       # then runs across the OpenMP team, and each row is independent, so the
+       # result is identical to predict.svm run serially.  The thread count is
+       # restored to 1 on exit so the original suite stays serial.
+    .svm_mc_set_threads(n_cores)
+    on.exit(.svm_mc_set_threads(1L), add = TRUE)
+    return (predict.svm(object, newdata,
+                        decision.values = decision.values,
+                        probability = probability,
+                        na.action = na.action))
 }
 
 .svm_mc_resolve_cores <- function (n_cores)
@@ -415,9 +388,43 @@ function (object, newdata,
             n_cores <- parallel::detectCores() - 1L
         else
             n_cores <- 1L
-      }
+       }
     n_cores <- as.integer(n_cores)
     if (is.na(n_cores) || n_cores < 1L)
         n_cores <- 1L
     return (n_cores)
 }
+
+#
+# Set (and restore) the C-level OpenMP thread count used by a *single*
+# SMO training call.  The original suite (svm / predict.svm) always runs
+# single-threaded because this is 1 by default; only svm_mc temporarily raises
+# it around its own training, then puts it back to 1, so the original suite
+# remains bit-identical to upstream.
+#
+.svm_mc_set_threads <- function (n)
+{
+    n <- as.integer(n)
+    if (is.na(n) || n < 1L) n <- 1L
+    .C(R_svm_mc_set_threads, as.integer(n))[1L]
+}
+
+#
+# Run a single svm.default training with the C-level OpenMP SMO inner loops
+# parallelised over `n_cores` threads, then restore the C thread count to 1 on
+# exit (so surrounding serial C calls, e.g. the CV folds, are not oversubscribed).
+#
+.svm_mc_run_train <- function (fn, n_cores)
+{
+    .svm_mc_set_threads(n_cores)
+    on.exit(.svm_mc_set_threads(1L), add = TRUE)
+    fn()
+}
+
+#
+# subset is an argument of svm.default (and svm_mc.default) with no default;
+# referencing an unbound subset errors.  In svm_mc.default the value
+#     subset.args <- if (!missing(subset)) list(subset = subset) else list()
+# is built once (the test is evaluated in svm_mc.default's frame, where
+# missing() is valid) and spread into every training call via do.call.
+#

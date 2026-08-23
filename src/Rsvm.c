@@ -8,6 +8,27 @@
 #define Malloc(type,n) (type *)malloc((n)*sizeof(type))
 
 /*
+  e1071mc multicore control.
+
+  e1071mc_threads bounds the OpenMP teams used inside the C routines
+  (training inner loops and prediction).  It defaults to 1, which makes every
+  OpenMP region run single-threaded, so the original suite -- svm() /
+  predict.svm() -- behaves exactly as the serial code did before the
+  multicore extension.  Only svm_mc() / predict.svm_mc() raise this
+  (via e1071mc_set_threads) and then run their own C calls, so the original
+  functions remain bit-identical to the upstream serial implementation.
+*/
+int e1071mc_threads = 1;
+
+/* R-visible name becomes "R_svm_mc_set_threads" via useDynLib(.fixes="R_"). */
+void svm_mc_set_threads(int *nthreads)
+{
+    if (*nthreads < 1)
+        *nthreads = 1;
+    e1071mc_threads = *nthreads;
+}
+
+/*
  * results from cross-validation
  */
 
@@ -359,6 +380,10 @@ void svmpredict  (int    *decisionvalues,
     struct svm_model m;
     struct svm_node ** train;
     int i;
+    /* OpenMP team size for the prediction loops below.  Bound by the
+       e1071mc_threads global so the original serial suite (svm / predict.svm)
+       keeps running single-threaded, while svm_mc / predict.svm_mc can raise it. */
+    int nt = e1071mc_threads;
     
     /* set up model */
     m.l        = *totnSV;
@@ -398,25 +423,25 @@ void svmpredict  (int    *decisionvalues,
 
     /* call svm-predict-function for each x-row, possibly using probability 
        estimator, if requested */
-     if (*probability && svm_check_probability_model(&m)) {
-#if defined(_OPENMP)
-       #pragma omp parallel for schedule(dynamic)
-#endif
-       for (i = 0; i < *xr; i++)
+      if (*probability && svm_check_probability_model(&m)) {
+ #if defined(_OPENMP)
+         #pragma omp parallel for num_threads(nt)
+ #endif
+        for (i = 0; i < *xr; i++)
  	ret[i] = svm_predict_probability(&m, train[i], prob + i * *nclasses);
-      } else {
-#if defined(_OPENMP)
-       #pragma omp parallel for schedule(dynamic)
-#endif
-       for (i = 0; i < *xr; i++)
+        } else {
+ #if defined(_OPENMP)
+         #pragma omp parallel for num_threads(nt)
+ #endif
+        for (i = 0; i < *xr; i++)
  	ret[i] = svm_predict(&m, train[i]);
-      }
+        }
 
-      /* optionally, compute decision values */
-    if (*decisionvalues) {
-#if defined(_OPENMP)
-      #pragma omp parallel for schedule(dynamic)
-#endif
+        /* optionally, compute decision values */
+     if (*decisionvalues) {
+ #if defined(_OPENMP)
+        #pragma omp parallel for num_threads(nt)
+ #endif
       for (i = 0; i < *xr; i++)
  	svm_predict_values(&m, train[i], dec + i * *nclasses * (*nclasses - 1) / 2);
     }

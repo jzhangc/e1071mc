@@ -95,30 +95,47 @@ cross-validation folds and predictions in parallel using
   a numeric vector, with optional \code{decision.values} and
    \code{probabilities} attributes).
 }
-\details{
-  The final full-data model is trained with the unmodified single-core
-   \code{\link{svm}} core (the libsvm SMO solver is inherently sequential and
-  cannot be split across cores at the R level).  Cross-validation folds, which
-  train \code{cross} independent models, are distributed across cores, which is
-  where the parallel speed-up is largest.  For prediction, \code{newdata} is
-  split into contiguous row chunks, one per core, and each chunk is predicted
-  with the unmodified \code{\link{predict.svm}}; results are concatenated in
-  original row order.
+ \details{
+    \bold{Cross-validation (\code{cross > 0}).}  K-fold CV trains
+    \code{cross} independent models, so the folds are distributed across cores
+   with \code{\link[parallel]{mclapply}} (one process per fold).  This is the
+   regime where the parallel speed-up is largest.
 
-  The per-row prediction loops inside the compiled \code{Rsvm.c} routine are
-  additionally guarded with \code{\#pragma omp parallel for}.  These pragmas are
-  standard C and compile to a strict sequential loop on any toolchain, and
-  become parallel automatically when the package is compiled with \code{-fopenmp}
-  (e.g.\ by adding a line \code{PKG_CXXFLAGS = -fopenmp} in
-  \file{src/Makevars} on an OpenMP-capable platform).  No
-  \code{src/Makevars} is shipped, so the default build is strictly sequential
-  and byte-identical to the original \code{svm}.
-}
-\note{
-  The base \code{\link{svm}} function is left completely unchanged;
-  \code{svm_mc} is an independent, additive implementation that reuses
-  \code{svm.default} and \code{predict.svm}.
-}
+    \bold{Single training (\code{cross = 0}).}  A single model is trained by the
+   compiled libsvm SMO (Sequential Minimal Optimization) solver.  SMO's outer
+   working-set loop is inherently sequential (each iteration updates the whole
+   gradient, which the next iteration reads), so the \emph{outer} loop cannot be
+   split across cores.  The \emph{inner} work of each iteration \emdash the
+   per-row gradient update and the \code{G_bar} update
+   (\file{src/svm.cpp}) and the RBF \code{x_square} pre-compute \emdash is
+   guarded with \code{\#pragma omp parallel for} and becomes parallel when the
+   package is compiled with \code{-fopenmp}.  Because the work of each iteration
+   is small relative to the thread-spawn cost, this C-level parallelism helps
+   only on large problems; on small problems it can be slightly slower than the
+   serial path.
+
+    \bold{Prediction.}  The per-row prediction loops inside the compiled
+   \code{Rsvm.c} routine (the main prediction, the decision-value loop, and the
+   probabilistic loop) are guarded with \code{\#pragma omp parallel for} and,
+   since the rows are independent, give a large, result-preserving speed-up when
+   compiled with \code{-fopenmp}.
+
+    \bold{Compile-time behaviour.}  All of the above OpenMP pragmas are standard
+   C and compile to a strict sequential loop on any toolchain; they become
+   parallel automatically only when the package is compiled with \code{-fopenmp}
+    (on this machine the active R \file{Makeconf} is configured with
+    \code{-fopenmp}).  A global C flag \code{e1071mc_threads} bounds every
+   OpenMP region to \code{n_cores} and resets to 1 after each call, so the
+   original suite (\code{\link{svm}} / \code{predict.svm}) is unaffected and, in
+   the serial build, byte-identical to upstream.
+ }
+ \note{
+   The base \code{\link{svm}} and \code{\link{predict.svm}} functions are left
+   completely unchanged; \code{svm_mc} / \code{predict.svm_multicore} are
+   independent, additive implementations that reuse \code{svm.default} and
+    \code{predict.svm}, and only \emph{additively} raise the C-level OpenMP
+   thread count around their own calls.
+ }
 \seealso{
     \code{\link{svm}}, \code{\link{predict.svm}}, \code{\link{tune.svm}},
     \code{detectCores} from \pkg{parallel}

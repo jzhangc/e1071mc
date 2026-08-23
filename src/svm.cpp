@@ -11,6 +11,10 @@
 #include <limits.h>
 #include <locale.h>
 #include "svm.h"
+/* OpenMP team size for the result-preserving inner loops of SMO.  Set by
+   svm_mc via R_svm_mc_set_threads; defaults to 1 so the original suite stays
+   serial. */
+extern int e1071mc_threads;
 int libsvm_version = LIBSVM_VERSION;
 typedef float Qfloat;
 typedef signed char schar;
@@ -284,6 +288,9 @@ Kernel::Kernel(int l, svm_node * const * x_, const svm_parameter& param)
 	if(kernel_type == RBF)
 	{
 		x_square = new double[l];
+#ifdef _OPENMP
+		#pragma omp parallel for num_threads(e1071mc_threads)
+#endif
 		for(int i=0;i<l;i++)
 			x_square[i] = dot(x[i],x[i]);
 	}
@@ -521,6 +528,22 @@ void Solver::Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
 	this->Cn = Cn;
 	this->eps = eps;
 	unshrink = false;
+#ifdef _OPENMP
+	/*
+	  The SMO *outer* loop is inherently sequential: each iteration reads the
+	  gradient that the previous iteration just wrote, so no #pragma can split it
+	  across cores.  Only the *inner* per-iteration loops (gradient / G_bar update)
+	  are parallelised.  Those loops are small, so below a problem size the
+	  thread-spawn cost outweighs the parallel work and the parallel path is
+	  *slower* than serial.  Clamp to 1 thread for small problems to avoid that
+	  regression; bit-identical to the serial result either way.
+	 */
+	int ntmc = e1071mc_threads;
+	if (ntmc < 1) ntmc = 1;
+	if (l < 2000) ntmc = 1;
+#else
+	int ntmc = 1;
+#endif
 
 	// initialize alpha_status
 	{
@@ -697,10 +720,13 @@ void Solver::Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
 		double delta_alpha_i = alpha[i] - old_alpha_i;
 		double delta_alpha_j = alpha[j] - old_alpha_j;
 		
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(ntmc)
+#endif
 		for(int k=0;k<active_size;k++)
-		{
+			{
 			G[k] += Q_i[k]*delta_alpha_i + Q_j[k]*delta_alpha_j;
-		}
+			}
 
 		// update alpha_status and G_bar
 
@@ -711,26 +737,29 @@ void Solver::Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
 			update_alpha_status(j);
 			int k;
 			if(ui != is_upper_bound(i))
-			{
+					{
 				Q_i = Q.get_Q(i,l);
-				if(ui)
-					for(k=0;k<l;k++)
-						G_bar[k] -= C_i * Q_i[k];
-				else
-					for(k=0;k<l;k++)
-						G_bar[k] += C_i * Q_i[k];
-			}
+				/* if(ui) G_bar[k] -= C_i*Q_i[k]; else G_bar[k] += C_i*Q_i[k];
+				 * fold the if/else into one signed loop so it is a direct
+				 * OpenMP target (each iteration writes a distinct G_bar[k]). */
+				double sgn_i = ui ? -C_i : C_i;
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(ntmc)
+#endif
+				for(k=0;k<l;k++)
+					G_bar[k] += sgn_i * Q_i[k];
+								}
 
 			if(uj != is_upper_bound(j))
-			{
+					{
 				Q_j = Q.get_Q(j,l);
-				if(uj)
-					for(k=0;k<l;k++)
-						G_bar[k] -= C_j * Q_j[k];
-				else
-					for(k=0;k<l;k++)
-						G_bar[k] += C_j * Q_j[k];
-			}
+				double sgn_j = uj ? -C_j : C_j;
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(ntmc)
+#endif
+				for(k=0;k<l;k++)
+					G_bar[k] += sgn_j * Q_j[k];
+								}
 		}
 	}
 

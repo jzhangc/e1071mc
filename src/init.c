@@ -96,37 +96,40 @@ svmpredict  (int    *decisionvalues,
 
 void
 svmwrite (double *v, int *r, int *c,
-	  int    *rowindex,
-	  int    *colindex,
-	  double *coefs,
-	  double *rho,
-	  int    *compprob,
-          double *probA,
-          double *probB,
-	  int    *nclasses,
-	  int    *totnSV,
-	  int    *labels,
-	  int    *nSV,
-	  int    *sparsemodel,
+      int     *rowindex,
+      int     *colindex,
+      double  *coefs,
+      double  *rho,
+          int     *compprob,
+          double  *probA,
+          double  *probB,
+      int     *nclasses,
+      int     *totnSV,
+      int     *labels,
+      int     *nSV,
+      int     *sparsemodel,
 
-	  int    *svm_type,
-	  int    *kernel_type,
-	  int    *degree,
-	  double *gamma,
-	  double *coef0,
+      int     *svm_type,
+      int     *kernel_type,
+      int     *degree,
+      double  *gamma,
+      double  *coef0,
 
-	  char **filename);
+      char  **filename);
 
+void
+svm_mc_set_threads(int *nthreads);
 
 static const R_CMethodDef CEntries[] = {
-    {"cmeans", (DL_FUNC) &cmeans, 14},
-    {"cshell", (DL_FUNC) &cshell, 15},
-    {"e1071_floyd", (DL_FUNC) &e1071_floyd, 4},
-    {"svmpredict", (DL_FUNC) &svmpredict, 30},
-    {"svmtrain", (DL_FUNC) &svmtrain, 37},
-    {"svmwrite", (DL_FUNC) &svmwrite, 21},
-    {"ufcl", (DL_FUNC) &ufcl, 15},
-    {NULL, NULL, 0}
+      {"cmeans", (DL_FUNC) &cmeans, 14},
+      {"cshell", (DL_FUNC) &cshell, 15},
+      {"e1071_floyd", (DL_FUNC) &e1071_floyd, 4},
+      {"svmpredict", (DL_FUNC) &svmpredict, 30},
+      {"svmtrain", (DL_FUNC) &svmtrain, 37},
+      {"svmwrite", (DL_FUNC) &svmwrite, 21},
+      {"svm_mc_set_threads", (DL_FUNC) &svm_mc_set_threads, 1},
+      {"ufcl", (DL_FUNC) &ufcl, 15},
+      {NULL, NULL, 0}
 };
 
 void R_init_e1071mc(DllInfo *dll)
