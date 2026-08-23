@@ -75,14 +75,14 @@ function (x,
 {
     n_cores <- .svm_mc_resolve_cores(n_cores)
 
-        # Resolve model type / kernel the same way svm.default does, purely to
-      # decide how to aggregate cross-validation results.  The actual fit and
-      # CV use the original svm.default so behaviour matches the base package.
+    # Resolve model type / kernel the same way svm.default does, purely to
+    # decide how to aggregate cross-validation results.  The actual fit and
+    # CV use the original svm.default so behaviour matches the base package.
 
-        # C-level OpenMP thread count for a single SMO train.  svm.default
-      # (and predict.svm) always run single-threaded, because e1071mc_threads
-      # defaults to 1: only the wrapper below temporarily raises it, then
-      # restores 1, so the original suite is bit-identical to upstream.
+    # C-level OpenMP thread count for a single SMO train.  svm.default
+    # (and predict.svm) always run single-threaded, because e1071mc_threads
+    # defaults to 1: only the wrapper below temporarily raises it, then
+    # restores 1, so the original suite is bit-identical to upstream.
     if (is.null(type)) type.res <-
         if (is.null(y)) "one-classification"
         else if (is.factor(y)) "C-classification"
@@ -93,18 +93,18 @@ function (x,
                                    "nu-classification",
                                    "one-classification",
                                    "eps-regression",
-                                   "nu-regression"), 99) - 1
-     if (type.i > 10) stop("wrong type specification!")
+        "nu-regression"), 99) - 1
+    if (type.i > 10) stop("wrong type specification!")
 
-          # subset / sparse / extra args have no default in svm.default; forward them
-         # only when actually supplied.  missing() is evaluated here, in
-         # svm_mc.default's own frame, and the captured lists are spread into each
-         # training call via do.call().
+    # subset / sparse / extra args have no default in svm.default; forward them
+    # only when actually supplied.  missing() is evaluated here, in
+    # svm_mc.default's own frame, and the captured lists are spread into each
+    # training call via do.call().
     subset.args <- if (!missing(subset)) list(subset = subset) else list()
     extra.args  <- list(...)
 
-          # Fast path: no cross-validation OR only one core.
-         # Deferring to the unmodified svm.default gives an exact, drop-in result.
+    # Fast path: no cross-validation OR only one core.
+    # Deferring to the unmodified svm.default gives an exact, drop-in result.
     if (cross <= 0L || n_cores <= 1L) {
         m <- .svm_mc_run_train(function() do.call(svm.default, c(list(
              x = x, y = y, scale = scale, type = type,
@@ -122,9 +122,9 @@ function (x,
         return (m)
        }
 
-          # Parallel path: cross > 0 and n_cores > 1.
-        # 1. Train the final full-data model with the unmodified svm.default,
-           # cross forced to 0 (CV handled below, in parallel).
+    # Parallel path: cross > 0 and n_cores > 1.
+    # 1. Train the final full-data model with the unmodified svm.default,
+    # cross forced to 0 (CV handled below, in parallel).
     final.model <- .svm_mc_run_train(function() do.call(svm.default, c(list(
         x = x, y = y, scale = scale, type = type,
         kernel = kernel, degree = degree, gamma = gamma,
@@ -139,7 +139,7 @@ function (x,
 
     final.model$n_cores <- as.integer(n_cores)
 
-      # 2. Parallel / serial cross-validation, folds distributed across cores.
+    # 2. Parallel / serial cross-validation, folds distributed across cores.
     if (cross > 0L) {
         cv <- .svm_mc_cross_validate(
             x = x, y = y,
@@ -161,7 +161,7 @@ function (x,
            }
         }
 
-      # 3. Fitted values / residuals (mirrors svm.default with fitted = TRUE).
+    # 3. Fitted values / residuals (mirrors svm.default with fitted = TRUE).
     if (fitted) {
         xhold <- x
         fit <- na.action(predict(final.model, xhold, decision.values = TRUE))
@@ -189,8 +189,8 @@ function (x, y, type.res, scale, kernel, degree, gamma, coef0,
            probability, n_cores, cross,
            subset, na.action)
 {
-      # Replicate svm.default's preprocessing (subsetting, NA, global scaling)
-     # so the CV runs on the same scaled data the base package would use.
+    # Replicate svm.default's preprocessing (subsetting, NA, global scaling)
+    # so the CV runs on the same scaled data the base package would use.
     pp <- .svm_mc_preprocess(x = x, y = y, scale = scale, type.res = type.res,
                              subset = subset, na.action = na.action)
     xs  <- pp$x
@@ -206,8 +206,8 @@ function (x, y, type.res, scale, kernel, degree, gamma, coef0,
 
     fold.id <- 1L + ((0L:(n - 1L)) %% cross)
 
-      # Per-fold training arguments.  scale is FALSE because xs is already
-     # globally scaled; everything else is forwarded unchanged.
+    # Per-fold training arguments.  scale is FALSE because xs is already
+    # globally scaled; everything else is forwarded unchanged.
     fold.args <- function (tr, te) list(
         scale         = FALSE,
         type          = type.res,
@@ -239,7 +239,7 @@ function (x, y, type.res, scale, kernel, degree, gamma, coef0,
         p   <- as.vector(predict(m, xs[te, , drop = FALSE]))
 
         if (type.i > 2) {
-              # Regression / one-class.  Both p and ys[te] are in the
+            # Regression / one-class.  Both p and ys[te] are in the
             # (possibly scaled) response units, exactly as svm.default feeds the
             # C code; we therefore accumulate stats in scaled units here and
             # convert to the original scale only at aggregation (using the same
@@ -271,9 +271,9 @@ function (x, y, type.res, scale, kernel, degree, gamma, coef0,
         sumvv <- sum(vapply(res, function (r) r$sumvv, numeric(1)))
         sumyy <- sum(vapply(res, function (r) r$sumyy, numeric(1)))
         sumvy <- sum(vapply(res, function (r) r$sumvy, numeric(1)))
-        # The per-fold errors above are in (scaled) response units; convert to
-        # the original scale exactly as svm.default does, via the
-        # crossprod(y.scale$scale) factor (= sd^2 for a single regressor).
+         # The per-fold errors above are in (scaled) response units; convert to
+         # the original scale exactly as svm.default does, via the
+         # crossprod(y.scale$scale) factor (= sd^2 for a single regressor).
          sf <- if (!is.null(ysc))
                   as.numeric(crossprod(ysc$"scaled:scale"))
                   else 1
@@ -329,10 +329,10 @@ function (x, y = NULL, scale = TRUE, type.res, subset, na.action)
             x[, scale] <- xtmp
             # (x.scale kept from final.model, not needed for CV here)
 
-             # Regression / nu-svr with scaling: svm.default scales the response
-               # globally; mirror that so CV runs on the same data.  The check
-               # is the same as in svm.default: type index > 2 (eps/nu
-               # regression) and y numeric.
+            # Regression / nu-svr with scaling: svm.default scales the response
+            # globally; mirror that so CV runs on the same data.  The check
+            # is the same as in svm.default: type index > 2 (eps/nu
+            # regression) and y numeric.
             ti <- pmatch(type.res, c("C-classification","nu-classification",
                     "one-classification","eps-regression","nu-regression"),
                     99L) - 1L
@@ -361,18 +361,18 @@ function (object, newdata,
 
     n_cores <- .svm_mc_resolve_cores(n_cores)
 
-        # Single core: identical path to the original predict.svm (serial C loop).
+    # Single core: identical path to the original predict.svm (serial C loop).
     if (n_cores <= 1L)
         return (predict.svm(object, newdata,
                             decision.values = decision.values,
                             probability = probability,
                             na.action = na.action))
 
-        # Multi-core: C-level OpenMP.  Raise the C thread count and call
-       # predict.svm exactly once; the per-row loop in src/Rsvm.c (svmpredict)
-       # then runs across the OpenMP team, and each row is independent, so the
-       # result is identical to predict.svm run serially.  The thread count is
-       # restored to 1 on exit so the original suite stays serial.
+    # Multi-core: C-level OpenMP.  Raise the C thread count and call
+    # predict.svm exactly once; the per-row loop in src/Rsvm.c (svmpredict)
+    # then runs across the OpenMP team, and each row is independent, so the
+    # result is identical to predict.svm run serially.  The thread count is
+    # restored to 1 on exit so the original suite stays serial.
     .svm_mc_set_threads(n_cores)
     on.exit(.svm_mc_set_threads(1L), add = TRUE)
     return (predict.svm(object, newdata,
@@ -421,10 +421,10 @@ function (object, newdata,
     fn()
 }
 
-#
-# subset is an argument of svm.default (and svm_mc.default) with no default;
-# referencing an unbound subset errors.  In svm_mc.default the value
-#     subset.args <- if (!missing(subset)) list(subset = subset) else list()
-# is built once (the test is evaluated in svm_mc.default's frame, where
-# missing() is valid) and spread into every training call via do.call.
-#
+    #
+    # subset is an argument of svm.default (and svm_mc.default) with no default;
+    # referencing an unbound subset errors.  In svm_mc.default the value
+    #     subset.args <- if (!missing(subset)) list(subset = subset) else list()
+    # is built once (the test is evaluated in svm_mc.default's frame, where
+    # missing() is valid) and spread into every training call via do.call.
+    #

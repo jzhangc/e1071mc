@@ -733,9 +733,9 @@ void Solver::Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
 #pragma omp parallel for num_threads(ntmc)
 #endif
 		for(int k=0;k<active_size;k++)
-			{
-				G[k] += Q_i[k]*delta_alpha_i + Q_j[k]*delta_alpha_j;
-			}
+		{
+			G[k] += Q_i[k]*delta_alpha_i + Q_j[k]*delta_alpha_j;
+		}
 
 		// update alpha_status and G_bar
 
@@ -746,28 +746,28 @@ void Solver::Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
 			update_alpha_status(j);
 			int k;
 			if(ui != is_upper_bound(i))
-					{
+			{
 				Q_i = Q.get_Q(i,l);
 				/* if(ui) G_bar[k] -= C_i*Q_i[k]; else G_bar[k] += C_i*Q_i[k];
-				 * fold the if/else into one signed loop so it is a direct
-				 * OpenMP target (each iteration writes a distinct G_bar[k]). */
+				   * fold the if/else into one signed loop so it is a direct
+				   * OpenMP target (each iteration writes a distinct G_bar[k]). */
 				double sgn_i = ui ? -C_i : C_i;
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(ntmc)
 #endif
-			for(k=0;k<l;k++)
-				G_bar[k] += sgn_i * Q_i[k];
+				for(k=0;k<l;k++)
+					G_bar[k] += sgn_i * Q_i[k];
 			}
 
 			if(uj != is_upper_bound(j))
-					{
+			{
 				Q_j = Q.get_Q(j,l);
 				double sgn_j = uj ? -C_j : C_j;
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(ntmc)
 #endif
-			for(k=0;k<l;k++)
-				G_bar[k] += sgn_j * Q_j[k];
+				for(k=0;k<l;k++)
+					G_bar[k] += sgn_j * Q_j[k];
 			}
 		}
 	}

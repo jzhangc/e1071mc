@@ -1,5 +1,5 @@
 Package: e1071mc
-Version: 1.7-17-1-20260822
+Version: 1.7-17-1-20260823
 Title: Misc Functions of the Department of Statistics, Probability
         Theory Group (Formerly: E1071), TU Wien
 Imports: graphics, grDevices, class, stats, methods, utils, proxy, parallel
