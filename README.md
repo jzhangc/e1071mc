@@ -2,23 +2,32 @@
 
 `e1071mc` extends the [e1071](https://CRAN.R-project.org/package=e1071)
 package with a multicore interface for Support Vector Machines. It exposes
-`svm_mc()`, a drop-in for `svm()` that additionally parallelises
-k-fold cross-validation and multi-row prediction, and an OpenMP-parallel
-prediction path in the C core.
+`svm_mc()`, a drop-in for `svm()` that additionally parallelises k-fold
+cross-validation (one process per fold, via `parallel::mclapply`), and a
+C-level OpenMP-parallel prediction path (the per-row prediction loops in
+`src/Rsvm.c`).  The inner per-iteration loops of the libsvm SMO solver in
+`src/svm.cpp` are also guarded with OpenMP pragmas, so a single training solve
+can run across threads.
 
 The original `svm()` behaviour is left unchanged: `svm_mc()` reuses the
-unmodified `svm.default` and `predict.svm` under the hood.
+unmodified `svm.default` and `predict.svm` under the hood, and only
+*additively* raises the C-level OpenMP thread count around its own calls.
 
 ## Features
 
 - **Parallel k-fold cross-validation**: each fold trains an independent
   libsvm model; the folds are distributed across cores with
-  `parallel::mclapply` (`svm_mc(..., cross = k, n_cores = p)`).
-- **Parallel prediction**: large test sets are split into row chunks, one per
-  core, each predicted in parallel (`predict.svm_multicore`).
-- **OpenMP prediction in C**: the per-row prediction loops in `src/Rsvm.c`
-  carry `#pragma omp parallel for`, compiled in when the build is
-  configured with `-fopenmp`.
+ `parallel::mclapply`, one process per fold (`svm_mc(..., cross = k, n_cores = p)`).
+- **Parallel prediction at the C level**: `predict.svm_multicore` raises a
+  C-level OpenMP thread count (the `e1071mc_threads` global in `src/Rsvm.c`)
+  and calls the unmodified `predict.svm` exactly once.  The per-row prediction
+  loops inside `svmpredict` are guarded with `#pragma omp parallel for`, so the
+  rows of the test matrix are classified across threads.
+- **OpenMP training in C**: inside the libsvm SMO solver (`src/svm.cpp`) the
+  per-iteration gradient and `G_bar` updates, and the RBF `x_square`
+  pre-compute, also carry `#pragma omp parallel for`; these speed up a *single*
+  training solve when compiled with `-fopenmp`.  The SMO outer working-set loop
+  itself is inherently sequential and is not split.
 - **Drop-in replacement**: identical argument list to `svm()`, plus one
   additional argument (`n_cores`). The returned object has class
   `svm_multicore` (a subclass of `svm`), so `print`, `summary`, `plot`,
@@ -35,7 +44,7 @@ R CMD INSTALL .
 
 # or, build and install the tarball
 R CMD build .
-R CMD INSTALL e1071mc_1.7-17.tar.gz
+R CMD INSTALL e1071mc_1.7-17-1-20260822.tar.gz
 ```
 
 `e1071mc` requires an OpenMP-capable C/C++ compiler for the C-level prediction
@@ -126,9 +135,10 @@ For `cross > 0`, it additionally carries the same per-fold fields as
 
 ### `predict.svm_multicore()`
 
-Parallel prediction. Row-chunks `newdata`, predicts each chunk with the
-unmodified `predict.svm` in parallel, and concatenates the results in
-original row order.
+Parallel prediction via C-level OpenMP. It raises the `e1071mc_threads`
+global and calls the unmodified `predict.svm` exactly once; the per-row
+prediction loops inside `svmpredict` (`src/Rsvm.c`) then run across threads.
+The result is identical to a serial `predict.svm`.
 
 ```r
 predict(object,
@@ -153,16 +163,23 @@ parallel when `n_cores > 1`.
 ### Parallel Computation
 
 - **Cross-validation folds**: each fold trains an independent libsvm model;
-  the folds are dispatched across cores with `parallel::mclapply`
-  (`R/svm_multicore.R:246`).
-- **Prediction**: `newdata` is split into `n_cores` contiguous row chunks,
-  each predicted in parallel; results are concatenated in original order
-  (`R/svm_multicore.R:378`).
-- **C-level prediction**: the per-row prediction loops in `src/Rsvm.c`
-  (the probability, plain, and decision-value paths) carry
-  `#pragma omp parallel for schedule(dynamic)` (`src/Rsvm.c:403,409,418`).
-  When the build has `-fopenmp`, these loops run in parallel; otherwise
-  they compile to a sequential loop.
+  the folds are dispatched across cores with `parallel::mclapply`, one
+  process per fold
+   (`R/svm_multicore.R:262`).
+- **Prediction (C-level OpenMP)**: `predict.svm_multicore` raises the
+   `e1071mc_threads` global and calls the unmodified `predict.svm` exactly
+   once (`R/svm_multicore.R:376`); it does *not* split `newdata` into row
+  chunks in R.  The per-row prediction loops inside `src/Rsvm.c` (the
+  probabilistic, plain, and decision-value paths) then run across threads.
+- **Training (C-level OpenMP)**: inside the libsvm SMO solver in
+  `src/svm.cpp` the per-iteration gradient / `G_bar` updates and the RBF
+  `x_square` pre-compute carry `#pragma omp parallel for`
+   (`src/svm.cpp:296,733,756,767`); a single training solve can run across
+  threads, clamped to one thread for small problems (`l < 2000`).
+
+These OpenMP pragmas are standard C and compile to a strict sequential loop on
+any toolchain; they become parallel only when the package is compiled with
+`-fopenmp`.
 
 ### Thread Management
 
@@ -175,14 +192,28 @@ parallel when `n_cores > 1`.
 
 ### C Implementation
 
-The C-level parallelism is implemented in `src/Rsvm.c` (the existing
-`Rsvm.c` that wraps the libsvm C++ core). No new source files are added.
+The C-level parallelism is spread across two existing source files, with no
+new files added:
+
+- `src/Rsvm.c` — the `svmpredict` routine's per-row loops (probabilistic,
+  plain, and decision-value paths) are guarded with
+  `#pragma omp parallel for num_threads(nt)`.
+- `src/svm.cpp` — the libsvm SMO solver's per-iteration gradient / `G_bar`
+  updates and the RBF `x_square` pre-compute carry
+  `#pragma omp parallel for num_threads(...)`.
+
+Both are bounded by the `e1071mc_threads` global (default 1), so the original
+`svm` / `predict.svm` path stays single-threaded and bit-identical to upstream.
 
 ## Performance
 
-The speedup comes from parallelising the independent, repeated work,
-not from parallelising a single SVM solve (the libsvm SMO solver is
-inherently sequential).
+The largest, most reliable speed-up comes from parallelising the independent,
+repeated work (CV folds and prediction rows).  A single SVM solve cannot be
+fully parallelised, because the libsvm SMO outer working-set loop is inherently
+sequential; however the per-iteration gradient / `G_bar` updates and the RBF
+`x_square` pre-compute are OpenMP-parallelised, so large single solves also
+benefit (clamped to one thread below `n < 2000`, where the thread-spawn cost
+would outweigh the parallel work).
 
 - **k-fold CV** with `n_cores = p`: up to roughly `p×` faster, provided
   each fold's training time dominates the per-process spawn overhead.
@@ -190,17 +221,17 @@ inherently sequential).
   speed-up with 6 cores** (measured during development; your mileage
   will vary with problem size and per-fold training time).
 - **Prediction** on large `newdata`: scales roughly linearly with the
-  number of cores while the per-row kernel cost dominates.
-- **Single-train, no CV**: no speed-up on the training solve (the libsvm
-  SMO solve is serial); the code calls the unmodified `svm.default`, whose
-  fitted-value prediction still benefits from the OpenMP C loop when the
-  build has `-fopenmp`.
+  number of cores while the per-row kernel cost dominates (C-level OpenMP).
+- **Single-train, no CV** (`cross = 0`): the SMO outer loop is serial, but
+  the inner per-iteration loops (and the RBF `x_square` pre-compute) run
+  across threads when the build has `-fopenmp` and `n >= 2000`; the
+  unmodified `svm.default` is used, so results are identical to `svm()`.
 
 ## Build & Test
 
 ```sh
 R CMD build .
-R CMD check e1071mc_1.7-17.tar.gz
+R CMD check e1071mc_1.7-17-1-20260822.tar.gz
 R CMD INSTALL .
 ```
 

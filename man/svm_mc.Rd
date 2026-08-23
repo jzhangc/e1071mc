@@ -105,10 +105,10 @@ cross-validation folds and predictions in parallel using
    compiled libsvm SMO (Sequential Minimal Optimization) solver.  SMO's outer
    working-set loop is inherently sequential (each iteration updates the whole
    gradient, which the next iteration reads), so the \emph{outer} loop cannot be
-   split across cores.  The \emph{inner} work of each iteration \emdash the
-   per-row gradient update and the \code{G_bar} update
-   (\file{src/svm.cpp}) and the RBF \code{x_square} pre-compute \emdash is
-   guarded with \code{\#pragma omp parallel for} and becomes parallel when the
+    split across cores.  The \emph{inner} work of each iteration, namely the
+    per-row gradient update and the \code{G_bar} update
+    (\file{src/svm.cpp}) and the RBF \code{x_square} pre-compute, is
+    guarded with \code{\#pragma omp parallel for} and becomes parallel when the
    package is compiled with \code{-fopenmp}.  Because the work of each iteration
    is small relative to the thread-spawn cost, this C-level parallelism helps
    only on large problems; on small problems it can be slightly slower than the

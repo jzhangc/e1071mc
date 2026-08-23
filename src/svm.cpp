@@ -285,11 +285,15 @@ Kernel::Kernel(int l, svm_node * const * x_, const svm_parameter& param)
 
 	clone(x,x_,l);
 
+	// RBF kernel: pre-compute the squared norm of every training row.
+	// These dot products are independent across rows, so the loop is a direct
+	// OpenMP target.  num_threads is bounded by the e1071mc_threads global so the
+	// serial suite (svm / predict.svm) keeps running with a single thread.
 	if(kernel_type == RBF)
 	{
 		x_square = new double[l];
 #ifdef _OPENMP
-		#pragma omp parallel for num_threads(e1071mc_threads)
+#pragma omp parallel for num_threads(e1071mc_threads)
 #endif
 		for(int i=0;i<l;i++)
 			x_square[i] = dot(x[i],x[i]);
@@ -719,13 +723,18 @@ void Solver::Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
 
 		double delta_alpha_i = alpha[i] - old_alpha_i;
 		double delta_alpha_j = alpha[j] - old_alpha_j;
-		
+
+		// Incremental gradient update: each active sample G[k] is advanced by a
+		// rank-2 term built from the two rows selected this iteration.  The k
+		// iterations are independent (distinct G[k] writes), so this is a direct
+		// OpenMP target.  num_threads is clamped to ntmc (1 for l < 2000) to
+		// avoid a thread-spawn cost that would make small problems slower.
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(ntmc)
 #endif
 		for(int k=0;k<active_size;k++)
 			{
-			G[k] += Q_i[k]*delta_alpha_i + Q_j[k]*delta_alpha_j;
+				G[k] += Q_i[k]*delta_alpha_i + Q_j[k]*delta_alpha_j;
 			}
 
 		// update alpha_status and G_bar
@@ -746,9 +755,9 @@ void Solver::Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(ntmc)
 #endif
-				for(k=0;k<l;k++)
-					G_bar[k] += sgn_i * Q_i[k];
-								}
+			for(k=0;k<l;k++)
+				G_bar[k] += sgn_i * Q_i[k];
+			}
 
 			if(uj != is_upper_bound(j))
 					{
@@ -757,9 +766,9 @@ void Solver::Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(ntmc)
 #endif
-				for(k=0;k<l;k++)
-					G_bar[k] += sgn_j * Q_j[k];
-								}
+			for(k=0;k<l;k++)
+				G_bar[k] += sgn_j * Q_j[k];
+			}
 		}
 	}
 

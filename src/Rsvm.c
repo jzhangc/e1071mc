@@ -421,29 +421,36 @@ void svmpredict  (int    *decisionvalues,
     else
 	train = sparsify(x, *xr, *c);
 
-    /* call svm-predict-function for each x-row, possibly using probability 
-       estimator, if requested */
-      if (*probability && svm_check_probability_model(&m)) {
- #if defined(_OPENMP)
-         #pragma omp parallel for num_threads(nt)
- #endif
-        for (i = 0; i < *xr; i++)
- 	ret[i] = svm_predict_probability(&m, train[i], prob + i * *nclasses);
-        } else {
- #if defined(_OPENMP)
-         #pragma omp parallel for num_threads(nt)
- #endif
-        for (i = 0; i < *xr; i++)
- 	ret[i] = svm_predict(&m, train[i]);
-        }
-
-        /* optionally, compute decision values */
-     if (*decisionvalues) {
- #if defined(_OPENMP)
+    /*
+     * Call the libsvm predictor for every row of the test matrix.  Each row is
+     * classified independently, so the per-row loop is a direct OpenMP target;
+     * the team size is bound to nt (= e1071mc_threads), which the serial suite
+     * keeps at 1 and svm_mc / predict.svm_multicore raise on demand.  When the
+     * model carries a probability estimator the probabilistic path is taken;
+     * otherwise the plain decision rule is used.
+     */
+    if (*probability && svm_check_probability_model(&m)) {
+    #if defined(_OPENMP)
         #pragma omp parallel for num_threads(nt)
- #endif
-      for (i = 0; i < *xr; i++)
- 	svm_predict_values(&m, train[i], dec + i * *nclasses * (*nclasses - 1) / 2);
+    #endif
+        for (i = 0; i < *xr; i++)
+            ret[i] = svm_predict_probability(&m, train[i], prob + i * *nclasses);
+    } else {
+    #if defined(_OPENMP)
+        #pragma omp parallel for num_threads(nt)
+    #endif
+        for (i = 0; i < *xr; i++)
+            ret[i] = svm_predict(&m, train[i]);
+    }
+
+    /* optionally, compute decision values (one per class pair, per row) */
+    if (*decisionvalues) {
+    #if defined(_OPENMP)
+        #pragma omp parallel for num_threads(nt)
+    #endif
+        for (i = 0; i < *xr; i++)
+            svm_predict_values(&m, train[i],
+                               dec + i * *nclasses * (*nclasses - 1) / 2);
     }
 
     /* clean up memory */
