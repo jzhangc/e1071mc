@@ -38,6 +38,54 @@ unmodified `svm.default` and `predict.svm` under the hood, and only
 
 ## Installation
 
+`e1071mc` (the multicore SVM variant) is developed on the `nightly` branch of
+the `jzhangc/e1071mc` repository; the default `master` branch still ships the
+upstream `e1071` (v1.7-17). Install from `nightly` unless another branch is
+intended.
+
+### From GitHub with `devtools`
+
+```r
+if (!requireNamespace("devtools", quietly = TRUE))
+    install.packages("devtools")
+
+# default branch (master, i.e. upstream e1071)
+devtools::install_github("jzhangc/e1071mc")
+
+# a specific branch or commit hash via the `ref` argument
+devtools::install_github("jzhangc/e1071mc", ref = "nightly")    # the e1071mc source
+devtools::install_github("jzhangc/e1071mc", ref = "parallel")
+devtools::install_github("jzhangc/e1071mc", ref = "5f1204b")    # a commit hash
+```
+
+`install_github` forwards `ref` to the underlying `remotes::install_github`;
+`ref` accepts a branch name, a commit hash, or (if present) a git tag, and
+defaults to `"HEAD"` (the repository's default branch). The repository currently
+has no tags; use a branch name or commit hash.
+
+### From GitHub with `pak`
+
+`pak::pkg_install` has no `ref` argument; instead the branch is encoded in the
+URL as `https://github.com/OWNER/REPO/tree/<branch>` (or `/tree/<tag>` /
+`/tree/<commit-hash>`).
+
+```r
+if (!requireNamespace("pak", quietly = TRUE))
+    install.packages("pak")
+
+# default branch (master, i.e. upstream e1071)
+pak::pkg_install("jzhangc/e1071mc")
+
+# a specific branch or commit hash via the /tree/<ref> URL form
+pak::pkg_install("https://github.com/jzhangc/e1071mc/tree/nightly")    # e1071mc source
+pak::pkg_install("https://github.com/jzhangc/e1071mc/tree/parallel")
+pak::pkg_install("https://github.com/jzhangc/e1071mc/tree/5f1204b")    # a commit hash
+```
+
+The bare `owner/repo` form is equivalent to `master` (the default branch).
+
+### From source
+
 ```r
 # from a source checkout
 R CMD INSTALL .
