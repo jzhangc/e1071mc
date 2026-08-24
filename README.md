@@ -378,7 +378,8 @@ Dates below are the update (release) dates of each version.
 
 | Version | Date | Notes |
 | --- | --- | --- |
-| 1.7-17-2-20260823 | 2026-08-23 | • Current version<br>• Added `tune_mc()`, a multicore variant of `tune()` that parallelises the parameter grid via `parallel::mclapply` (one process per parameter combination), mirroring `svm_mc`<br>• `Version` and `DESCRIPTION` metadata updated |
+| 1.7-17-2-20260824 | 2026-08-24 | • Current version<br>• Added a quantitative `tune_mc()` assessment to the Performance section (measured benchmarks: a 24-combination grid with `n = 4000`, 10 features, 5-fold CV; up to ~5.9× speed-up at 8 cores on a 12-core machine)<br>• Converted the version log Notes to bullet points<br>• `Version` and `DESCRIPTION` metadata updated |
+| 1.7-17-2-20260823 | 2026-08-23 | • Added `tune_mc()`, a multicore variant of `tune()` that parallelises the parameter grid via `parallel::mclapply` (one process per parameter combination), mirroring `svm_mc`<br>• `Version` and `DESCRIPTION` metadata updated |
 | 1.7-17-1-20260823 | 2026-08-23 | • `Version` and `DESCRIPTION` metadata updated |
 | 1.7-17-1-20260822v3 | 2026-08-22 | • README rewritten to reflect C-level OpenMP prediction (no R row-chunking)<br>• C indentation normalised and comments added in the `svmpredict` loops and the `svm.cpp` `G` / `G_bar` loops<br>• Tarball filename corrected<br>• `man/svm_mc.Rd` `\emdash` macro fixed |
 | 1.7-17-1-20260822 | 2026-08-22 | • Initial multicore implementation: `svm_mc()` (parallel k-fold CV via `parallel::mclapply`) and `predict.svm_multicore()` (C-level OpenMP)<br>• Added `#pragma omp` parallelism in `src/Rsvm.c` (`svmpredict` per-row loops) and `src/svm.cpp` (SMO per-iteration gradient / `G_bar` updates and RBF `x_square` pre-compute) |
