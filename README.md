@@ -5,13 +5,17 @@ package with a multicore interface for Support Vector Machines. It exposes
 `svm_mc()`, a drop-in for `svm()` that additionally parallelises k-fold
 cross-validation (one process per fold, via `parallel::mclapply`), and a
 C-level OpenMP-parallel prediction path (the per-row prediction loops in
-`src/Rsvm.c`).  The inner per-iteration loops of the libsvm SMO solver in
+`src/Rsvm.c`).  It also adds `tune_mc()`, a multicore variant of `tune()`
+that distributes the parameter grid across cores (one process per parameter
+combination). The inner per-iteration loops of the libsvm SMO solver in
 `src/svm.cpp` are also guarded with OpenMP pragmas, so a single training solve
 can run across threads.
 
-The original `svm()` behaviour is left unchanged: `svm_mc()` reuses the
-unmodified `svm.default` and `predict.svm` under the hood, and only
-*additively* raises the C-level OpenMP thread count around its own calls.
+The original `svm()` and `tune()` behaviour is left unchanged: `svm_mc()`
+reuses the unmodified `svm.default` and `predict.svm` under the hood, and only
+*additively* raises the C-level OpenMP thread count around its own calls;
+`tune_mc()` reuses the unmodified `tune()` logic and only parallelises the
+grid search.
 
 ## Features
 
@@ -34,7 +38,13 @@ unmodified `svm.default` and `predict.svm` under the hood, and only
   and `coef` all keep working.
 - **Exact serial fallback**: calling with `n_cores = 1` (or leaving `cross = 0`)
   defers to `svm.default`/`predict.svm`, so results are byte-identical to
-  `svm()`/`predict()`.
+   `svm()`/`predict()`.
+- **Parallel grid search**: `tune_mc()`, a drop-in for `tune()`, distributes
+  the independent parameter combinations across cores with `parallel::mclapply`
+  (one process per combination), exactly as `svm_mc()` distributes CV folds.
+  Each combination is scored over all its (already fixed) folds, so the
+  aggregated error is identical to the serial `tune()`. With `n_cores = 1` it
+  defers to the unmodified `tune()` for an exact drop-in result.
 
 ## Installation
 
@@ -126,10 +136,18 @@ pred  <- predict(model, x, probability = TRUE, decision.values = TRUE,
 
 # Regression
 set.seed(1)
-xr  <- 1:200
-yr  <- 0.5 * xr + sin(xr / 5) + rnorm(200, sd = 0.3)
-mr  <- svm_mc(xr, yr, cross = 5, n_cores = 3, type = "eps-regression")
+xr   <- 1:200
+yr   <- 0.5 * xr + sin(xr / 5) + rnorm(200, sd = 0.3)
+mr   <- svm_mc(xr, yr, cross = 5, n_cores = 3, type = "eps-regression")
 mr$MSE; mr$tot.MSE; mr$scorrcoeff
+
+# Parallel grid search (multicore variant of tune())
+data(iris)
+obj  <- tune_mc(svm, Species ~ ., data = iris,
+                ranges = list(gamma = 2^(-1:2), cost = 2^(2:5)),
+                tunecontrol = tune.control(sampling = "fix"),
+                n_cores = 4, set.seed = 123)
+obj$best.parameters; obj$best.performance
 ```
 
 ## API Reference
@@ -205,6 +223,47 @@ training). If `n_cores <= 1`, delegates to `predict.svm`.
 
 Set `cross = k` to obtain k-fold cross-validation. The folds run in
 parallel when `n_cores > 1`.
+
+### `tune_mc()`
+
+Multicore parameter tuning by grid search. It shares the same interface and
+return shape as `tune()`, but distributes the independent parameter
+combinations across cores with `parallel::mclapply` (one process per
+combination), exactly as `svm_mc()` distributes CV folds.
+
+```r
+tune_mc(METHOD, train.x, train.y = NULL, data = list(),
+         validation.x = NULL, validation.y = NULL, ranges = NULL,
+         predict.func = predict, tunecontrol = tune.control(),
+         n_cores = NULL, set.seed = NULL, ...)
+```
+
+All arguments other than `n_cores` and `set.seed` have the same meaning as in
+`tune()`. `n_cores` sets the number of parallel workers; if `NULL`, it is
+set to `parallel::detectCores() - 1` (via the same resolver used by
+`svm_mc`). A value `<= 1` disables parallelism and the work is deferred to
+the unmodified `tune()`, giving an exact drop-in result. `set.seed`, when
+supplied, is applied before the training/validation fold split is drawn, so
+the fold assignment agrees between serial and parallel runs and the result is
+reproducible.
+
+The independent unit of work is one parameter combination. Each combination is
+scored over all its (already fixed) folds, exactly as `tune()` does: for each
+fold the model is trained on the in-fold rows and scored on the hold-out
+rows, and the per-fold errors are aggregated with `repeat.aggregate` and
+`sampling.aggregate`. Because the split is fixed before dispatch and the
+aggregation order is fixed, the parallel result is identical to the serial
+`tune()` (up to floating-point summation order, which `mclapply`'s
+`mc.set.seed = TRUE` makes deterministic per task). Parallelism is at the
+process level; the per-model training runs serially (the C-level OpenMP
+thread count is left at 1, so no core oversubscription occurs, exactly as
+`svm_mc` avoids).
+
+**Returns** an object of class `tune_mc` (a subclass of `tune`), so
+`print`, `summary`, and `plot` for the base `"tune"` class keep working. In
+addition to the components of `tune()` (`best.parameters`, `best.performance`,
+`performances`, `train.ind`, `best.model`), the field `n_cores` records the
+number of workers used.
 
 ## Under the Hood
 
@@ -295,6 +354,18 @@ The following checks are what to verify after a build:
 - Regression (`type = "eps-regression"` and `"nu-regression"`) and
   all classification modes (C, nu, one-class) train and predict
   correctly.
+
+## Version Log
+
+`e1071mc` is a fork of the CRAN `e1071` package that adds multicore
+/ OpenMP parallelism. The rows below aggregate the dated build
+versions (e.g. `1.7-17-1-20260822` … `1.7-17-1-20260823`) into their
+release `1.7-17-x`; dates are the range of build dates in each cycle.
+
+| Version | Date | Notes |
+| --- | --- | --- |
+| 1.7-17-2 | 2026-08-23 | Added `tune_mc()`, a multicore variant of `tune()` that parallelises the parameter grid via `parallel::mclapply` (one process per parameter combination), mirroring `svm_mc`; `Version` and `DESCRIPTION` metadata updated. |
+| 1.7-17-1 | 2026-08-22 to 2026-08-23 | Initial multicore implementation: `svm_mc()` (parallel k-fold CV via `parallel::mclapply`) and `predict.svm_multicore()` (C-level OpenMP), with `#pragma omp` parallelism in `src/Rsvm.c` (`svmpredict` per-row loops) and `src/svm.cpp` (SMO per-iteration gradient / `G_bar` updates and RBF `x_square` pre-compute); README rewritten to reflect C-level OpenMP prediction, C indentation normalised, tarball filename corrected, `man/svm_mc.Rd` `\emdash` macro fixed; `Version` and `DESCRIPTION` metadata updated. |
 
 ## License
 
