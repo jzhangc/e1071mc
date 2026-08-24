@@ -4,8 +4,17 @@
 
 \section{Changes in version 1.7-17}{
 \itemize{
-    \item fix author url in vignettes
-    }
+     \item fix author url in vignettes
+     \item add \code{tune_mc()} : a multicore / parallel variant of
+       \code{\link{tune}}. It distributes the parameter grid across
+       cores using \code{\link[parallel]{mclapply}} (one \R process
+       per parameter combination), mirroring the design of
+       \code{\link{svm_mc}} / \code{\link{predict.svm_multicore}}.
+       The original \code{tune()} is left completely unchanged;
+       \code{tune_mc()} is an additive function with its own
+       \code{"tune_mc"} class. Results are identical to the serial
+       \code{tune()} (up to floating-point summation order).
+     }
 }
 \section{Changes in version 1.7-16}{
   \itemize{
