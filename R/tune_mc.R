@@ -36,8 +36,8 @@ function (METHOD, train.x, train.y = NULL, data = list(),
 {
     n_cores <- .svm_mc_resolve_cores(n_cores)
 
-     # Honor set.seed before branching so both the fast path (serial) and the
-     # parallel path get an identical, reproducible fold assignment.
+    # Honor set.seed before branching so both the fast path (serial) and the
+    # parallel path get an identical, reproducible fold assignment.
     if (!is.null(set.seed))
         set.seed(set.seed)
 
@@ -52,7 +52,7 @@ function (METHOD, train.x, train.y = NULL, data = list(),
 
     call <- match.call()
 
-     # ---------- internal helpers (identical to tune()) --------------------------------
+    # ---------- internal helpers (identical to tune()) --------------------------------
     resp <- function(formula, data) {
         model.response(model.frame(formula, data))
     }
@@ -69,7 +69,7 @@ function (METHOD, train.x, train.y = NULL, data = list(),
         p0
     }
 
-     # ---------- parameter handling (identical to tune()) -----------------------------
+    # ---------- parameter handling (identical to tune()) -----------------------------
     if (tunecontrol$sampling == "cross")
         validation.x <- validation.y <- NULL
     useFormula <- is.null(train.y)
@@ -96,7 +96,7 @@ function (METHOD, train.x, train.y = NULL, data = list(),
         lapply(1:tunecontrol$nboot,
                function(x) sample(n, n * tunecontrol$boot.size, replace = TRUE))
 
-     # ---------- prepare the grid of independent tasks -------------------------------
+    # ---------- prepare the grid of independent tasks -------------------------------
     parameters <- if (is.null(ranges))
         data.frame(dummyparameter = 0)
     else
@@ -113,8 +113,8 @@ function (METHOD, train.x, train.y = NULL, data = list(),
 
     extra.args   <- list(...)
 
-     # Precompute, for every fold, the training index, the hold-out data, and the
-     # true response -- the same slicing tune() does for the hold-out / true.y.
+    # Precompute, for every fold, the training index, the hold-out data, and the
+    # true response -- the same slicing tune() does for the hold-out / true.y.
     precompute.fold <- function (sample) {
         ti <- train.ind[[sample]]
         xout <- if (!is.null(validation.x))
@@ -141,11 +141,11 @@ function (METHOD, train.x, train.y = NULL, data = list(),
 
     folds <- lapply(seq_len(nfold), precompute.fold)
 
-     # Train one parameter combination over all its folds and return its
-     # aggregated error / variance.  This reproduces tune() exactly: the nrepeat
-     # inner repetitions are kept inside the fold (as tune() does), and each fold
-     # is an independent task distributed across cores via mclapply, mirroring how
-     # svm_mc treats each CV fold as an independent task.
+    # Train one parameter combination over all its folds and return its
+    # aggregated error / variance.  This reproduces tune() exactly: the nrepeat
+    # inner repetitions are kept inside the fold (as tune() does), and each fold
+    # is an independent task distributed across cores via mclapply, mirroring how
+    # svm_mc treats each CV fold as an independent task.
     one.combination <- function (para.set) {
         fold.errors <- numeric(nfold)
         for (sample in seq_len(nfold)) {
@@ -188,8 +188,8 @@ function (METHOD, train.x, train.y = NULL, data = list(),
              var    = tunecontrol$sampling.dispersion(fold.errors))
      }
 
-     # Distribute parameter combinations across cores, mirroring svm_mc's
-     # mclapply over folds.  Each task is one parameter combination.
+    # Distribute parameter combinations across cores, mirroring svm_mc's
+    # mclapply over folds.  Each task is one parameter combination.
     if (n_cores > 1L)
         results <- mclapply(seq_len(p), one.combination,
                             mc.cores = n_cores, mc.set.seed = TRUE)
@@ -199,7 +199,7 @@ function (METHOD, train.x, train.y = NULL, data = list(),
     model.errors   <- vapply(results, function (r) r$error, numeric(1))
     model.variances <- vapply(results, function (r) r$var,   numeric(1))
 
-     # ---------- assemble and return (identical shape to tune()) ----------------------
+    # ---------- assemble and return (identical shape to tune()) ----------------------
     best <- which.min(model.errors)
     pars <- if (is.null(ranges))
         NULL
