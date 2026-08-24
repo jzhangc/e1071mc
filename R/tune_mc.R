@@ -36,6 +36,11 @@ function (METHOD, train.x, train.y = NULL, data = list(),
 {
     n_cores <- .svm_mc_resolve_cores(n_cores)
 
+     # Honor set.seed before branching so both the fast path (serial) and the
+     # parallel path get an identical, reproducible fold assignment.
+    if (!is.null(set.seed))
+        set.seed(set.seed)
+
      # Fast path: defer to the unmodified tune() for an exact drop-in result.
     if (n_cores <= 1L) {
         return (tune(METHOD, train.x = train.x, train.y = train.y,
@@ -73,13 +78,6 @@ function (METHOD, train.x, train.y = NULL, data = list(),
     if (is.vector(train.x)) train.x <- t(t(train.x))
     if (is.data.frame(train.y))
         train.y <- as.matrix(train.y)
-
-     # Deterministic fold / training-sample assignment: fix the RNG up-front so both
-     # the parallel and serial runs (and runs across machines) agree on perm.ind and
-     # the bootstrap resamples, mirroring the reproducibility svm_mc gets from
-     # mclapply(mc.set.seed).  n_cores <= 1 uses tune() and is unaffected.
-    if (!is.null(set.seed))
-        set.seed(set.seed)
 
     if (!is.null(validation.x)) tunecontrol$fix <- 1
     n <- nrow(if (useFormula) data else train.x)
@@ -143,11 +141,11 @@ function (METHOD, train.x, train.y = NULL, data = list(),
 
     folds <- lapply(seq_len(nfold), precompute.fold)
 
-       # Train one parameter combination over all its folds and return its
-      # aggregated error / variance.  This reproduces tune() exactly: the nrepeat
-      # inner repetitions are kept inside the fold (as tune() does), and each fold
-      # is an independent task distributed across cores via mclapply, mirroring how
-      # svm_mc treats each CV fold as an independent task.
+     # Train one parameter combination over all its folds and return its
+     # aggregated error / variance.  This reproduces tune() exactly: the nrepeat
+     # inner repetitions are kept inside the fold (as tune() does), and each fold
+     # is an independent task distributed across cores via mclapply, mirroring how
+     # svm_mc treats each CV fold as an independent task.
     one.combination <- function (para.set) {
         fold.errors <- numeric(nfold)
         for (sample in seq_len(nfold)) {
@@ -190,7 +188,7 @@ function (METHOD, train.x, train.y = NULL, data = list(),
              var    = tunecontrol$sampling.dispersion(fold.errors))
      }
 
-      # Distribute parameter combinations across cores, mirroring svm_mc's
+     # Distribute parameter combinations across cores, mirroring svm_mc's
      # mclapply over folds.  Each task is one parameter combination.
     if (n_cores > 1L)
         results <- mclapply(seq_len(p), one.combination,
