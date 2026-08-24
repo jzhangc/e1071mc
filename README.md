@@ -337,10 +337,17 @@ would outweigh the parallel work).
   number of parameter combinations (`p`), since each combination is an
   independent process distributed via `parallel::mclapply` (up to ~`p×` faster
   on a `p`-core machine, provided per-combination training time dominates the
-  per-process spawn overhead).  Tuning is parallelised at the *process* level
-  only — the C-level thread count (`.svm_mc_set_threads`) stays at 1, so tasks
-  do not oversubscribe the cores.  The fast path (`n_cores <= 1`) defers to
-  the unmodified `tune()`, so results are byte-identical to the serial run.
+  per-process spawn overhead).  Empirically, a grid of **24 combinations**
+  (`cost` × `gamma`) with `n = 4000`, 10 features, and 5-fold CV took
+  **6.5 s serially** and scaled to **~3.4 s (1.9×) / 1.9 s (3.4×) /
+  1.3–1.6 s (4.1–5.0×) / 1.1–1.5 s (4.4–5.9×)** for **2 / 4 / 6 / 8
+  cores** on a 12-core machine (measured during development; the
+  per-process spawn overhead caps the speed-up well below `p×`).  Tuning is
+  parallelised at the *process* level only — the C-level thread count
+  (`.svm_mc_set_threads`) stays at 1, so tasks do not oversubscribe the
+  cores.  The fast path (`n_cores <= 1`) defers to the unmodified `tune()`,
+  so results are byte-identical to the serial run (verified: equal
+  `best.parameters` and `best.performance`).
 
 ## Build & Test
 
@@ -371,11 +378,11 @@ Dates below are the update (release) dates of each version.
 
 | Version | Date | Notes |
 | --- | --- | --- |
-| 1.7-17-2-20260823 | 2026-08-23 | Current version; added `tune_mc()`, a multicore variant of `tune()` that parallelises the parameter grid via `parallel::mclapply` (one process per parameter combination), mirroring `svm_mc`; `Version` and `DESCRIPTION` metadata updated. |
-| 1.7-17-1-20260823 | 2026-08-23 | `Version` and `DESCRIPTION` metadata updated. |
-| 1.7-17-1-20260822v3 | 2026-08-22 | README rewritten to reflect C-level OpenMP prediction (no R row-chunking); C indentation normalised and comments added in the `svmpredict` loops and the `svm.cpp` `G` / `G_bar` loops; tarball filename corrected; `man/svm_mc.Rd` `\emdash` macro fixed. |
-| 1.7-17-1-20260822 | 2026-08-22 | Initial multicore implementation: `svm_mc()` (parallel k-fold CV via `parallel::mclapply`) and `predict.svm_multicore()` (C-level OpenMP). Added `#pragma omp` parallelism in `src/Rsvm.c` (`svmpredict` per-row loops) and `src/svm.cpp` (SMO per-iteration gradient / `G_bar` updates and RBF `x_square` pre-compute). |
-| 1.7-17 | 2025-12-18 | Upstream `e1071` base (this fork's starting point). Full upstream history in `inst/NEWS.Rd`. |
+| 1.7-17-2-20260823 | 2026-08-23 | • Current version<br>• Added `tune_mc()`, a multicore variant of `tune()` that parallelises the parameter grid via `parallel::mclapply` (one process per parameter combination), mirroring `svm_mc`<br>• `Version` and `DESCRIPTION` metadata updated |
+| 1.7-17-1-20260823 | 2026-08-23 | • `Version` and `DESCRIPTION` metadata updated |
+| 1.7-17-1-20260822v3 | 2026-08-22 | • README rewritten to reflect C-level OpenMP prediction (no R row-chunking)<br>• C indentation normalised and comments added in the `svmpredict` loops and the `svm.cpp` `G` / `G_bar` loops<br>• Tarball filename corrected<br>• `man/svm_mc.Rd` `\emdash` macro fixed |
+| 1.7-17-1-20260822 | 2026-08-22 | • Initial multicore implementation: `svm_mc()` (parallel k-fold CV via `parallel::mclapply`) and `predict.svm_multicore()` (C-level OpenMP)<br>• Added `#pragma omp` parallelism in `src/Rsvm.c` (`svmpredict` per-row loops) and `src/svm.cpp` (SMO per-iteration gradient / `G_bar` updates and RBF `x_square` pre-compute) |
+| 1.7-17 | 2025-12-18 | • Upstream `e1071` base (this fork's starting point)<br>• Full upstream history in `inst/NEWS.Rd` |
 
 ## License
 
