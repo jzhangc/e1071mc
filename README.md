@@ -333,6 +333,14 @@ would outweigh the parallel work).
   the inner per-iteration loops (and the RBF `x_square` pre-compute) run
   across threads when the build has `-fopenmp` and `n >= 2000`; the
   unmodified `svm.default` is used, so results are identical to `svm()`.
+- **Hyperparameter tuning** with `tune_mc()`: the speed-up scales with the
+  number of parameter combinations (`p`), since each combination is an
+  independent process distributed via `parallel::mclapply` (up to ~`p×` faster
+  on a `p`-core machine, provided per-combination training time dominates the
+  per-process spawn overhead).  Tuning is parallelised at the *process* level
+  only — the C-level thread count (`.svm_mc_set_threads`) stays at 1, so tasks
+  do not oversubscribe the cores.  The fast path (`n_cores <= 1`) defers to
+  the unmodified `tune()`, so results are byte-identical to the serial run.
 
 ## Build & Test
 
